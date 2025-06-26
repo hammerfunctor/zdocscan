@@ -17,7 +17,7 @@ This program is developed and tested on zig =0.14.1=. Just grab a tarball from
 To use this program out of the box, you need in your system search path either
 executable =potrace= (for vectorified PDF), or executables =djvm= and =c44= (for
 djvu, which is typically distributed under package =djvulibre=). ArchLinux users
-can install this program from =aur/zdocscan=. Most other Linux distributions have
+can install this program from =aur/zdocscan-git=. Most other Linux distributions have
 =potrace= and =djvulibre= from their package distributors. Just install them and
 start compiling.
 
