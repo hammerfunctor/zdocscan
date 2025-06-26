@@ -1,4 +1,4 @@
-[[./demo.png]]
+[[./demo.jpg]]
 
 This program is used to process phone-taken photos of hand-written
 drafts/notes/homeworks, in order to create high in quality, low in noise/size
