@@ -1,0 +1,83 @@
+[[./demo.png]]
+
+This program is used to process phone-taken photos of hand-written
+drafts/notes/homeworks, in order to create high in quality, low in noise/size
+scanned documents, in formats of pdf or djvu. I use it get rid of too many
+scratch papers with independent topics.
+
+The algorithm is from *Bradley, D. (2007). Adaptive Thresholding using Integral
+Image. Journal of Graphic Tools, 12(2), pp. 13-21.*
+[[[doi:10.1080/2151237x.2007.10129236]]], which offers the most satisfactory results
+around my multiple rounds of attendence to such a program. It also beats most of
+your phone apps for document scanning.
+
+This program is developed and tested on zig =0.14.1=. Just grab a tarball from
+[[https://ziglang.org/download/]] or use =zigup= to setup toolchain.
+
+To use this program out of the box, you need in your system search path either
+executable =potrace= (for vectorified PDF), or executables =djvm= and =c44= (for
+djvu, which is typically distributed under package =djvulibre=). ArchLinux users
+can install this program from =aur/zdocscan=. Most other Linux distributions have
+=potrace= and =djvulibre= from their package distributors. Just install them and
+start compiling.
+
+If you're not willing to install them, you can still use it as is. The program
+will process your input image files and produce a set of output =ppm= images
+(change the =.ppm= in ~try adapt.writeToFile(out, imgpath, .ppm);~ to =.jpg= or
+=.png= in order to have outputs in different format), and stop when it fails to
+find the binaries prescribed above.
+
+To use to it, simply do
+#+begin_src sh
+zdocscan -d /tmp -o notes.pdf <file1> <file2> ... # generate /tmp/notes.pdf and a set of images /tmp/{img-0.ppm,...}
+zdocscan -d /tmp -p djvu -o notes.djvu <file1> <file2> ... # generate black-white /tmp/notes.djvu and ppm's
+zdocscan -d /tmp -p djvu -c 3 -o notes.djvu <file1> <file2> ... # generate colored /tmp/notes.djvu and ppm's
+#+end_src
+
+* Furture improvements?
+
+Here's some possible directs I've imagined. Feel free to work them out and send
+a pull request.
+
+** Image cropping
+
+It would be good to crop the image to the document itself before processing, but
+getting a stable recognition is far from being trivial. Personally I'm okay with
+a few boundary lines.
+
+** Package dependencies
+One could package =djvulibre= and =potrace= within the easy-to-work-with zig
+build system in order to bring this program to users on other operating systems
+out of the box. Feel free to do it you're interested.
+
+** Coordinate with note-taking apps
+One could also play with the potrace api and make a writer for note-taking apps
+like =xournalpp= , whose =xopp= format, after =gzip -d=, is as follows:
+#+begin_src xml
+<?xml version="1.0" standalone="no"?>
+<xournal creator="xournalpp 1.2.4" fileversion="4">
+<title>Xournal++ document - see https://xournalpp.github.io/</title>
+<page width="595.27559" height="841.88976">
+<background type="solid" color="#ffffffff" style="lined"/>
+<layer>
+<stroke tool="pen" color="#3333ccff" width="2.26" capStyle="round">198.38 170.04 199.43189 170.95998 200.48158 171.82662 201.52883 172.64097</stroke>
+<stroke tool="pen" color="#3333ccff" width="2.26" fill="255" capStyle="round">272.90635 159.85815 272.45124 164.77558 272.45124 170.1842 271.99058 176.70285 271.99058 183.40466 271.51881 190.02321 271.51881 196.0923 271.51881 201.55642 271.51881 206.96504 271.51881 212.37366 272.42626 217.78228 273.33649 223.1909 274.70737 229.13233 276.07271 234.06919 277.43527 238.00424 279.25017 241.93652 281.06507 245.38039 282.88274 247.83911 284.24253 249.80386 285.60509 251.2802 286.96765 253.24772 287.8751 254.2301 288.78255 255.21525 290.59745 256.19763 291.5049 256.68882 292.86746 257.18001 294.23002 257.67397 295.58981 257.67397 296.95237 257.67397 298.76727 257.67397 301.03728 257.67397 303.30729 257.67397 306.02964 256.68882 308.29965 255.70644 310.56966 254.72129 312.83967 253.73891 314.65457 252.75654 316.46947 251.77139 317.83203 250.78901 319.64693 249.80386 321.00949 248.82148 322.82439 247.83911 324.18695 246.36277 326.45418 244.8892 327.81674 242.92167 329.17931 240.95415 330.9942 238.49543 332.35677 236.03671 333.71655 233.578 334.624 231.11928 335.53423 227.67819 336.89401 224.72829 337.80146 221.77838 338.70891 218.82848 339.61914 215.8758 340.52658 212.9259 340.97892 209.97599 341.43403 207.51728 341.88637 205.54975 341.88637 204.07618 341.88637 202.59984 341.88637 200.63509 341.88637 199.15875 341.88637 196.70004 341.88637 195.22647 341.43403 192.76776 340.97892 191.29142 340.07147 189.32389 339.16402 187.85033 338.25657 185.39161 337.34912 183.42408 335.98656 181.94774 335.07911 180.47418 334.17166 178.99784 333.26422 177.52427 331.90165 176.04793 330.9942 174.57437 330.08676 173.09803 329.17931 172.11565 328.27186 171.1305 327.36441 170.14813 326.9093 169.65694 326.45418 169.16575 326.00185 168.67179 325.54673 168.1806 325.0944 167.68941 324.63928 167.19822 323.73184 166.70703 322.82439 166.21307 321.91694 165.2307 321.00949 164.73951 320.10204 163.75436 319.19181 163.26317 318.28436 162.77198 317.37692 162.28079 316.46947 161.7896 315.56202 161.29564 314.65457 160.80445 313.29201 160.31326 312.83967 160.31326 311.022 159.33089 310.56966 159.33089 308.75476 158.8397 308.29965 158.8397 306.93709 158.8397 306.02964 158.8397 304.66985 158.8397 303.75963 158.8397 302.85218 158.8397 301.94473 158.8397 300.58494 158.8397 299.67472 158.8397 298.31493 158.8397 297.40748 158.8397 296.04492 158.8397 295.13747 158.8397 293.77491 158.8397 291.96001 158.8397 290.59745 158.8397 289.23766 158.8397 288.32744 158.8397 286.96765 158.8397 286.0602 158.8397 285.15275 158.8397 284.2564 158.8397 283.36283 158.8397 282.49701 158.8397 281.63396 158.8397 280.72373 158.8397 279.82739 158.8397 278.48147 158.8397 277.65173 158.8397 276.42514 158.8397 275.99778 158.8397 274.8822 158.8397 273.6473 159.28371 272.81477 159.58619 272.38186 159.8193 271.94062 160.05796 271.55766 160.26609</stroke>
+</layer>
+</page>
+</xournal>
+#+end_src
+where the lefttop corner is coordinate origin. [[https://potrace.sourceforge.net/potracelib.pdf][potrace apis]]
+
+To implement such a writer, one needs: 1) a coordinate mapper; 2) a cubic Bezier
+interpolator for \( P (t) = (1 - t)^3 K_0 + 3 t (1 - t)^2 K_1 + 3 t^2 (1 - t) K_2 + t^3
+K_3 \) with a proper sampling algorithm [a) uniform sampling after a global
+estimate of curve length; b) locally approximate the curve length integral]; 3)
+possibly a way to achieve region =fill= effect. Basically that's it.
+
+[FIXME] Can we do the =fill= in terms of some sort of pressured strokes?
+
+** GUI?
+
+I was also imagining introducing a gui to preview and fine-tune parameters, and
+to handcraft a real scanner (with usb webcam), but it might not be the proper
+time to make it too complicated.
