@@ -21,7 +21,8 @@ documents, one need external tools. Since version =0.0.2= I packaged =potrace=
 along with the compilation procedure, which is tested on Linux. Please feel free
 to submit an issue if you met any problem on other platforms. You can install
 independently =potrace= or =djvulibre= for the production of pdf and djvu
-documents. Those are distributed by most of Linux package sources.
+documents (you need to make sure executable =potrace= or =djvm= and =c44= in
+search PATH). Those are distributed by most of Linux package sources.
 
 If you're not willing to install them, you can still use it as is. The program
 will process your input image files and produce a set of output =ppm= images
@@ -31,9 +32,10 @@ find the binaries prescribed above.
 
 To use to it, simply do
 #+begin_src sh
+zdocscan <file1> <file2> ... # generate /tmp/output.pdf and a set of images /tmp/{img-0.ppm,...}
 zdocscan -d /tmp -o notes.pdf <file1> <file2> ... # generate /tmp/notes.pdf and a set of images /tmp/{img-0.ppm,...}
-zdocscan -d /tmp -p djvu -o notes.djvu <file1> <file2> ... # generate black-white /tmp/notes.djvu and ppm's
-zdocscan -d /tmp -p djvu -c 3 -o notes.djvu <file1> <file2> ... # generate colored /tmp/notes.djvu and ppm's
+zdocscan -d /tmp -o notes.djvu <file1> <file2> ... # generate black-white /tmp/notes.djvu and ppm's
+zdocscan -d /tmp -c 3 <file1> <file2> ... # generate colored /tmp/output.djvu and ppm's
 #+end_src
 
 * Furture improvements?
@@ -50,7 +52,8 @@ a few boundary lines.
 ** Package dependencies
 One could package =djvulibre= and =potrace= within the easy-to-work-with zig
 build system in order to bring this program to users on other operating systems
-out of the box. Feel free to do it you're interested.
+out of the box. I packaged =potrace= as of version =0.0.2=. If you're interested
+in doing this for (part of) =djvulibre=, see =01ff656= for for changes.
 
 ** Coordinate with note-taking apps
 One could also play with the potrace api and make a writer for note-taking apps
