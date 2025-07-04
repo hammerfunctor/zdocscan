@@ -20,16 +20,29 @@ const stb = @import("zstbi");
 const adapt = @import("root.zig");
 const Settings = adapt.Settings;
 
+const potrace = @import("potrace.zig");
+const backend_pdf = potrace.backend_pdf;
+
+const preHelpString =
+    \\
+    \\    This program is distributed in the hope that it will be useful,
+    \\    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    \\    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    \\    GNU General Public License for more details.
+    \\
+    \\ zdocscan [options] <a.ppm>
+    \\
+;
 const paramString =
-    \\-h, --help             Display this help and exit.
-    \\-b, --backend <str>    Specify backend: jpg, png, ppm
-    \\-r, --root <str>       Specify filename root as <root>-<d>.ext
-    \\-p, --post <str>       Post process the produced image files to: pdf, djvu
-    \\-o, --output <str>     Output filename of postprocessing, only basename of which is taken
-    \\-d, --dir <str>        Output dir
-    \\-v, --vec <u32>        Whether to vectorize images when producing a pdf, vectorize it by default
-    \\-c, --channel <u32>    Number of channels for intermediate images, respected unless output is vectorized pdf
-    \\<str>...
+    \\  -h, --help             Display this help and exit.
+    \\  -b, --backend <str>    Specify backend: jpg, png, ppm
+    \\  -r, --root <str>       Specify filename root as <root>-<d>.ext
+    \\  -p, --post <str>       Post process the produced image files to: pdf, djvu, pdfe(calling external potrace to generate pdf file)
+    \\  -o, --output <str>     Output filename of postprocessing, only basename of which is taken
+    \\  -d, --dir <str>        Output dir
+    \\  -v, --vec <u32>        Whether to vectorize images when producing a pdf, vectorize it by default
+    \\  -c, --channel <u32>    Number of channels for intermediate images, respected unless output is vectorized pdf
+    \\  <str>...
     \\
 ;
 
@@ -63,16 +76,45 @@ pub fn main() !void {
     defer filenames.deinit();
     defer for (filenames.items) |f| allocator.free(f);
 
-    if (res.args.help != 0)
+    if (res.args.help != 0) {
+        std.debug.print(preHelpString, .{});
         std.debug.print(paramString, .{});
+    }
     const backend = if (res.args.backend) |b| b else "png";
-    _ = backend; // This is actually ignored
-    const post = if (res.args.post) |p| p else "pdf";
-    const output = if (res.args.output) |o| o else "output.pdf";
+    _ = backend; // Ignored, we don't need other formats
+    const c = if (res.args.channel) |c| c else 1;
+
+    const post, const output = blk: {
+        const outext = if (res.args.output) |o| std.fs.path.extension(o) else "";
+        const outname = if (res.args.output) |o| o[0 .. o.len - outext.len] else "output";
+        if (c != 1) {
+            // only accept djvu when c!=1
+            std.debug.print(">>> When number of color channels is other than 1, ONLY djvu document will be attempted! <<<\n", .{});
+            const output = try std.fmt.allocPrint(allocator, "{s}.djvu", .{outname});
+            break :blk .{ "djvu", output };
+        }
+        if (res.args.post) |p| {
+            if (std.mem.eql(u8, p, "djvu")) {
+                const output = try std.fmt.allocPrint(allocator, "{s}.djvu", .{outname});
+                break :blk .{ "djvu", output };
+            }
+            if (std.mem.eql(u8, p, "pdfe")) {
+                const output = try std.fmt.allocPrint(allocator, "{s}.pdf", .{outname});
+                break :blk .{ "pdfe", output };
+            }
+        }
+        if (std.mem.eql(u8, outext[1..], "djvu")) {
+            const output = try std.fmt.allocPrint(allocator, "{s}.djvu", .{outname});
+            break :blk .{ "djvu", output };
+        }
+        // Otherwise, for c=1 we always assume a pdf document
+        const output = try std.fmt.allocPrint(allocator, "{s}.pdf", .{outname});
+        break :blk .{ "pdf", output };
+    };
+    defer allocator.free(output);
+
     const nameroot = if (res.args.root) |r| r else "img";
     const dir = if (res.args.dir) |d| d else "/tmp";
-    const vec = if (res.args.vec) |v| v != 0 else true;
-    const c = if (std.mem.eql(u8, post, "pdf") and vec) 1 else if (res.args.channel) |c| c else 1;
 
     const setting: Settings = .{ .channel = c };
     // Process to images using adaptive method
@@ -113,7 +155,7 @@ pub fn main() !void {
             const pagepath = try std.fmt.allocPrint(allocator, "{s}.djvu", .{i});
             try djvm.append(pagepath);
             var cmd = std.process.Child.init(&.{ "c44", i, pagepath }, allocator);
-            if (ind == filenames.items.len) { // only wait for the last run
+            if (ind == filenames.items.len - 1) { // only wait for the last run
                 _ = cmd.spawnAndWait() catch |e| {
                     std.debug.print("Failed spawning process c44: {any}\n", .{e});
                     unreachable;
@@ -131,22 +173,23 @@ pub fn main() !void {
             unreachable;
         };
 
-        std.debug.print("Producing {s}...\n", .{outpath});
+        std.debug.print("Producing {s} ...\n", .{outpath});
     } else if (std.mem.eql(u8, post, "pdf")) {
+        const outfile = try std.fs.path.join(allocator, &.{ dir, std.fs.path.basename(output) });
+        defer allocator.free(outfile);
+        std.debug.print("Producing {s} ...\n", .{outfile});
+        try potrace._main(allocator, outfile, filenames.items);
+    } else if (std.mem.eql(u8, post, "pdfe")) {
+        // calling external `potrace'
         var alist = std.ArrayList([]const u8).init(allocator);
         defer alist.deinit();
         const outpath = try std.fs.path.join(allocator, &.{ dir, std.fs.path.basename(output) });
         defer allocator.free(outpath);
-        if (vec) {
-            try alist.appendSlice(&.{ "potrace", "-b", "pdf", "-o", outpath, "--" });
-        } else {
-            // img2pdf --output /tmp/out.pdf --pagesize 8.5inx11in IMG_20240604_173016_01.jpg IMG_20241022_185626_019.jpg IMG_20241022_185630_916.jpg
-            try alist.appendSlice(&.{ "img2pdf", "--output", outpath, "--pagesize", "8.5inx11in" });
-        }
+        try alist.appendSlice(&.{ "potrace", "-b", "pdf", "-o", outpath, "--" });
         try alist.appendSlice(filenames.items);
         var cmd = std.process.Child.init(alist.items, allocator);
         cmd.spawn() catch |e| {
-            std.debug.print("Failed spawning process pdfunite: {any}\n", .{e});
+            std.debug.print("Failed spawning process: {any}\n", .{e});
             unreachable;
         };
         std.debug.print("Producing {s}...\n", .{outpath});

@@ -7,6 +7,7 @@ pub fn build(b: *Build) void {
 
     const dep_clap = b.dependency("clap", .{ .target = target, .optimize = optimize });
     const dep_zstbi = b.dependency("zstbi", .{ .target = target, .optimize = optimize });
+    const dep_zlib = b.dependency("zlib", .{ .target = target, .optimize = optimize });
 
     const exe = b.addExecutable(.{
         .name = "zdocscan",
@@ -16,6 +17,59 @@ pub fn build(b: *Build) void {
     });
     exe.root_module.addImport("clap", dep_clap.module("clap"));
     exe.root_module.addImport("zstbi", dep_zstbi.module("root"));
+
+    exe.addIncludePath(b.path("c/potrace/"));
+
+    // const config_h_step = b.addConfigHeader(.{
+    //     .style = .{ .autoconf = b.path("c/potrace/config.h.in") },
+    //     .include_path = "c/potrace/config.h", // The name of the output header file (relative to build dir)
+    // }, .{
+    //     // Provide values to substitute into config.h.in
+    //     // These keys should match the MACRO_NAME part of the #undef's in config.h.in
+    //     // .ENABLE_DEBUG = enable_debug,
+    //     .POTRACE = "potrace",
+    //     .VERSION = "1.16",
+    //     .HAVE_STDINT_H = 1,
+    //     .HAVE_ZLIB = 1,
+    //     // .SYSTEM_OS = target.result.os.tag.toSlice(), // e.g., "linux", "macos", "windows"
+    //     // .SYSTEM_IS_64BIT = target.result.arch.ptrBitWidth == 64,
+    // });
+    // exe.addIncludePath(config_h_step.getOutput());
+
+    exe.addCSourceFiles(.{
+        .root = b.path("c/potrace/"),
+        .flags = &.{
+            // "-DPOTRACE=\"potrace\"",
+            // "-DVERSION=\"1.16\"",
+            "-DHAVE_CONFIG_H=1",
+        },
+        .files = &.{
+            "backend_pdf.c",
+            "bitmap_io.c",
+            "potracelib.c",
+            "main.c",
+            "flate.c",
+            "lzw.c",
+            "decompose.c",
+            "trace.c",
+            "curve.c",
+            "trans.c",
+            "bbox.c",
+            "progress_bar.c",
+            "backend_svg.c",
+            "backend_eps.c",
+            "backend_dxf.c",
+            "backend_pgm.c",
+            "backend_xfig.c",
+            "backend_geojson.c",
+            "greymap.c",
+            "render.c",
+            "getopt.c",
+            "getopt1.c",
+        },
+    });
+    exe.linkLibC();
+    exe.linkLibrary(dep_zlib.artifact("z"));
 
     b.installArtifact(exe);
 
