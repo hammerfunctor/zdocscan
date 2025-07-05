@@ -1,7 +1,7 @@
 .{
     .name = .zdocscan,
     .fingerprint = 0xe58ce6672b16dab4,
-    .version = "0.0.2",
+    .version = "0.0.3",
     .dependencies = .{
         .clap = .{
             .url = "https://github.com/Hejsil/zig-clap/archive/cc5c6a5d71a317ed4b0ad776842d1d0655f72d0a.tar.gz",

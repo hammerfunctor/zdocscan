@@ -16,12 +16,10 @@
 const std = @import("std");
 const clap = @import("clap");
 const stb = @import("zstbi");
+const build_options = @import("build_options");
 
 const adapt = @import("root.zig");
 const Settings = adapt.Settings;
-
-const potrace = @import("potrace.zig");
-const backend_pdf = potrace.backend_pdf;
 
 const preHelpString =
     \\
@@ -35,21 +33,19 @@ const preHelpString =
 ;
 const paramString =
     \\  -h, --help             Display this help and exit.
-    \\  -b, --backend <str>    Specify backend: jpg, png, ppm
-    \\  -r, --root <str>       Specify filename root as <root>-<d>.ext
-    \\  -p, --post <str>       Post process the produced image files to: pdf, djvu, pdfe(calling external potrace to generate pdf file)
-    \\  -o, --output <str>     Output filename of postprocessing, only basename of which is taken
-    \\  -d, --dir <str>        Output dir
+    \\  -o, --output <str>     Output filename, with ext: pdf(default),djvu,png,jpg,ppm. Note that if output is out.pdf, intermediate image files out-%d.ppm will be generated. Please make sure you do not have anything important like that in the output dir!
+    \\  -d, --dir <str>        Output dir, default to be /tmp. Note that directory specified in your output file will be ignored!
     \\  -v, --vec <u32>        Whether to vectorize images when producing a pdf, vectorize it by default
-    \\  -c, --channel <u32>    Number of channels for intermediate images, respected unless output is vectorized pdf
+    \\  -c, --channel <u32>    Number of color channels, default values are: pdf(1),djvu(1),png(3),jpg(3),ppm(3), pdf output only accepts c=1
     \\  <str>...
     \\
 ;
 
+const Backend = enum { pdf, djvu, png, jpg, ppm };
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-
     const allocator = gpa.allocator();
 
     stb.init(allocator);
@@ -80,41 +76,30 @@ pub fn main() !void {
         std.debug.print(preHelpString, .{});
         std.debug.print(paramString, .{});
     }
-    const backend = if (res.args.backend) |b| b else "png";
-    _ = backend; // Ignored, we don't need other formats
-    const c = if (res.args.channel) |c| c else 1;
 
-    const post, const output = blk: {
-        const outext = if (res.args.output) |o| std.fs.path.extension(o) else "";
-        const outname = if (res.args.output) |o| o[0 .. o.len - outext.len] else "output";
-        if (c != 1) {
-            // only accept djvu when c!=1
-            std.debug.print(">>> When number of color channels is other than 1, ONLY djvu document will be attempted! <<<\n", .{});
-            const output = try std.fmt.allocPrint(allocator, "{s}.djvu", .{outname});
-            break :blk .{ "djvu", output };
-        }
-        if (res.args.post) |p| {
-            if (std.mem.eql(u8, p, "djvu")) {
-                const output = try std.fmt.allocPrint(allocator, "{s}.djvu", .{outname});
-                break :blk .{ "djvu", output };
-            }
-            if (std.mem.eql(u8, p, "pdfe")) {
-                const output = try std.fmt.allocPrint(allocator, "{s}.pdf", .{outname});
-                break :blk .{ "pdfe", output };
-            }
-        }
-        if (std.mem.eql(u8, outext[1..], "djvu")) {
-            const output = try std.fmt.allocPrint(allocator, "{s}.djvu", .{outname});
-            break :blk .{ "djvu", output };
-        }
-        // Otherwise, for c=1 we always assume a pdf document
-        const output = try std.fmt.allocPrint(allocator, "{s}.pdf", .{outname});
-        break :blk .{ "pdf", output };
+    const dir = if (res.args.dir) |d| d else "/tmp"; // FIXME: maybe take care of dir specified in --output?
+
+    var buf = [_]u8{0} ** 1024;
+    const b, const outname, const ext = blk: {
+        const o = if (res.args.output) |o| std.fs.path.basename(o) else "";
+        const ext0 = std.fs.path.extension(o);
+        const ext1 = std.ascii.lowerString(&buf, ext0);
+        const b, const ext = blk1: {
+            if (std.mem.eql(u8, ext1, ".djvu")) break :blk1 .{ Backend.djvu, "djvu" };
+            if (std.mem.eql(u8, ext1, ".png")) break :blk1 .{ Backend.png, "png" };
+            if (std.mem.eql(u8, ext1, ".jpg")) break :blk1 .{ Backend.jpg, "jpg" };
+            if (std.mem.eql(u8, ext1, ".ppm")) break :blk1 .{ Backend.ppm, "ppm" };
+            break :blk1 .{ Backend.pdf, "pdf" };
+        };
+        const outname = if (o.len > ext0.len) o[0 .. o.len - ext0.len] else "output";
+        // const output = try std.fmt.allocPrint(allocator, "{s}.{s}", .{outname, ext});
+        break :blk .{ b, outname, ext };
     };
-    defer allocator.free(output);
 
-    const nameroot = if (res.args.root) |r| r else "img";
-    const dir = if (res.args.dir) |d| d else "/tmp";
+    const c = switch (b) {
+        .pdf => 1,
+        else => if (res.args.channel) |c| (if (c >= 1 and c <= 3) c else 1) else 1,
+    };
 
     const setting: Settings = .{ .channel = c };
     // Process to images using adaptive method
@@ -123,12 +108,15 @@ pub fn main() !void {
         if (isf) |_| {
             var in = try adapt.readImage(pos, setting.channel0);
             defer in.deinit();
-
             var out = try adapt.processFile(allocator, in, setting);
             defer out.deinit();
 
-            const ext = "ppm";
-            const imgname = try std.fmt.allocPrint(allocator, "{s}-{d}.{s}", .{ nameroot, fileind, ext });
+            const ext1, const imgop: adapt.ImageOutputOptions = switch (b) {
+                .jpg => .{ "jpg", .jpg },
+                .png => .{ "png", .png },
+                else => .{ "ppm", .ppm },
+            };
+            const imgname = try std.fmt.allocPrint(allocator, "{s}-{d}.{s}", .{ outname, fileind, ext1 });
             defer allocator.free(imgname);
             const imgpath = try std.fs.path.join(allocator, &.{ dir, imgname });
 
@@ -136,16 +124,19 @@ pub fn main() !void {
             try filenames.append(imgpath);
 
             fileind += 1;
-            try adapt.writeToFile(out, imgpath, .ppm);
+            try adapt.writeToFile(out, imgpath, imgop);
         } else |_| {}
     }
 
     if (filenames.items.len == 0) return;
+
     // Make a document
-    if (std.mem.eql(u8, post, "djvu")) {
+    if (b == Backend.djvu) {
         var djvm = std.ArrayList([]const u8).init(allocator);
         defer djvm.deinit();
-        const outpath = try std.fs.path.join(allocator, &.{ dir, std.fs.path.basename(output) });
+        const output = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ outname, ext });
+        defer allocator.free(output);
+        const outpath = try std.fs.path.join(allocator, &.{ dir, output });
         defer allocator.free(outpath);
 
         try djvm.appendSlice(&.{ "djvm", "-c", outpath });
@@ -174,24 +165,29 @@ pub fn main() !void {
         };
 
         std.debug.print("Producing {s} ...\n", .{outpath});
-    } else if (std.mem.eql(u8, post, "pdf")) {
-        const outfile = try std.fs.path.join(allocator, &.{ dir, std.fs.path.basename(output) });
-        defer allocator.free(outfile);
-        std.debug.print("Producing {s} ...\n", .{outfile});
-        try potrace._main(allocator, outfile, filenames.items);
-    } else if (std.mem.eql(u8, post, "pdfe")) {
-        // calling external `potrace'
-        var alist = std.ArrayList([]const u8).init(allocator);
-        defer alist.deinit();
-        const outpath = try std.fs.path.join(allocator, &.{ dir, std.fs.path.basename(output) });
-        defer allocator.free(outpath);
-        try alist.appendSlice(&.{ "potrace", "-b", "pdf", "-o", outpath, "--" });
-        try alist.appendSlice(filenames.items);
-        var cmd = std.process.Child.init(alist.items, allocator);
-        cmd.spawn() catch |e| {
-            std.debug.print("Failed spawning process: {any}\n", .{e});
-            unreachable;
-        };
-        std.debug.print("Producing {s}...\n", .{outpath});
+    } else if (b == Backend.pdf) {
+        const output = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ outname, ext });
+        defer allocator.free(output);
+        if (build_options.bundled_potrace) {
+            const potrace = @import("potrace.zig");
+            const outfile = try std.fs.path.join(allocator, &.{ dir, output });
+            defer allocator.free(outfile);
+            std.debug.print("Producing {s} ...\n", .{outfile});
+            try potrace._main(allocator, outfile, filenames.items);
+        } else {
+            // calling external `potrace'
+            var alist = std.ArrayList([]const u8).init(allocator);
+            defer alist.deinit();
+            const outpath = try std.fs.path.join(allocator, &.{ dir, output });
+            defer allocator.free(outpath);
+            try alist.appendSlice(&.{ "potrace", "-b", "pdf", "-o", outpath, "--" });
+            try alist.appendSlice(filenames.items);
+            var cmd = std.process.Child.init(alist.items, allocator);
+            cmd.spawn() catch |e| {
+                std.debug.print("Failed spawning process: {any}\n", .{e});
+                unreachable;
+            };
+            std.debug.print("Producing {s}...\n", .{outpath});
+        }
     }
 }

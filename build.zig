@@ -1,22 +1,13 @@
 const std = @import("std");
 const Build = std.Build;
 
-pub fn build(b: *Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-
-    const dep_clap = b.dependency("clap", .{ .target = target, .optimize = optimize });
-    const dep_zstbi = b.dependency("zstbi", .{ .target = target, .optimize = optimize });
+fn compilePotrace(
+    b: *Build,
+    exe: *Build.Step.Compile,
+    target: Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
     const dep_zlib = b.dependency("zlib", .{ .target = target, .optimize = optimize });
-
-    const exe = b.addExecutable(.{
-        .name = "zdocscan",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.root_module.addImport("clap", dep_clap.module("clap"));
-    exe.root_module.addImport("zstbi", dep_zstbi.module("root"));
 
     exe.addIncludePath(b.path("c/potrace/"));
 
@@ -70,24 +61,44 @@ pub fn build(b: *Build) void {
     });
     exe.linkLibC();
     exe.linkLibrary(dep_zlib.artifact("z"));
+}
 
+pub fn build(b: *Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    const dep_clap = b.dependency("clap", .{ .target = target, .optimize = optimize });
+    const dep_zstbi = b.dependency("zstbi", .{ .target = target, .optimize = optimize });
+
+    const exe = b.addExecutable(.{
+        .name = "zdocscan",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.addImport("clap", dep_clap.module("clap"));
+    exe.root_module.addImport("zstbi", dep_zstbi.module("root"));
+
+    const build_options = b.addOptions();
+
+    const bundled_potrace = b.option(bool, "bundle-potrace", "Compile and bundle potrace.") orelse false;
+    build_options.addOption(bool, "bundled_potrace", bundled_potrace);
+
+    if (bundled_potrace) {
+        compilePotrace(b, exe, target, optimize);
+    }
+
+    exe.root_module.addOptions("build_options", build_options);
     b.installArtifact(exe);
-
-    // This *creates* a Run step in the build graph, to be executed when another
-    // step is evaluated that depends on it. The next line below will establish
-    // such a dependency.
-    const run_cmd = b.addRunArtifact(exe);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
     // This is not necessary, however, if the application depends on other installed
     // files, this ensures they will be present and in the expected location.
+    const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-
-    // This allows the user to pass arguments to the application in the build
-    // command itself, like this: `zig build run -- arg1 arg2 etc`
     if (b.args) |args| {
-        run_cmd.addArgs(args);
+        run_cmd.addArgs(args); // `zig build run -- arg1 arg2 etc`
     }
 
     // This creates a build step. It will be visible in the `zig build --help` menu,

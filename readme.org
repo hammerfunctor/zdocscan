@@ -30,18 +30,22 @@ will process your input image files and produce a set of output =ppm= images
 =.png= in order to have outputs in different format), and stop when it fails to
 find the binaries prescribed above.
 
-To use to it, simply do
+To compile and use to it, simply do
 #+begin_src sh
-zdocscan <file1> <file2> ... # generate /tmp/output.pdf and a set of images /tmp/{img-0.ppm,...}
-zdocscan -d /tmp -o notes.pdf <file1> <file2> ... # generate /tmp/notes.pdf and a set of images /tmp/{img-0.ppm,...}
-zdocscan -d /tmp -o notes.djvu <file1> <file2> ... # generate black-white /tmp/notes.djvu and ppm's
-zdocscan -d /tmp -c 3 <file1> <file2> ... # generate colored /tmp/output.djvu and ppm's
+# build
+zig build -Dbundle-potrace=false # default, or
+zig build -Dbundle-potrace=true
+
+# use
+zdocscan <file1> <file2> ... # /tmp/output.pdf and images /tmp/{output-0.ppm,...}
+zdocscan -d /tmp -o notes.pdf <file1> <file2> ... # /tmp/notes.pdf and images /tmp/{notes-0.ppm,...}
+zdocscan -d /tmp -c 3 -o notes.djvu <file1> <file2> ... # colored /tmp/notes.djvu and ppm's
 #+end_src
 
 * Furture improvements?
 
-Here's some possible directs I've imagined. Feel free to work them out and send
-a pull request.
+Here're some possible directions I've imagined. Feel free to work them out and
+send a pull request.
 
 ** Image cropping
 
