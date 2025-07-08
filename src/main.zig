@@ -19,7 +19,6 @@ const stb = @import("zstbi");
 const build_options = @import("build_options");
 
 const adapt = @import("root.zig");
-const Settings = adapt.Settings;
 
 const preHelpString =
     \\
@@ -101,7 +100,7 @@ pub fn main() !void {
         else => if (res.args.channel) |c| (if (c >= 1 and c <= 3) c else 1) else 1,
     };
 
-    const setting: Settings = .{ .channel = c };
+    const setting: adapt.Settings = .{ .channel = c };
     // Process to images using adaptive method
     for (res.positionals[0]) |pos| {
         const isf = std.fs.cwd().access(pos, .{});
@@ -168,7 +167,7 @@ pub fn main() !void {
     } else if (b == Backend.pdf) {
         const output = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ outname, ext });
         defer allocator.free(output);
-        if (build_options.bundled_potrace) {
+        if (comptime build_options.bundled_potrace) {
             const potrace = @import("potrace.zig");
             const outfile = try std.fs.path.join(allocator, &.{ dir, output });
             defer allocator.free(outfile);
