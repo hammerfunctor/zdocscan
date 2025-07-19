@@ -18,11 +18,12 @@ to setup toolchain. ArchLinux users can install this program from
 
 This program processes images by itself. But in order to generate pdf or djvu
 documents, one need external tools. Since version =0.0.2= I packaged =potrace=
-along with the compilation procedure, which is tested on Linux. Please feel free
-to submit an issue if you met any problem on other platforms. You can install
-independently =potrace= or =djvulibre= for the production of pdf and djvu
-documents (you need to make sure executable =potrace= or =djvm= and =c44= in
-search PATH). Those are distributed by most of Linux package sources.
+along with the compilation procedure, which is very primitive and only tested on
+Linux. Please feel free to submit an issue if you met any problem on other
+platforms. You can install independent =potrace= or =djvulibre= for the
+production of pdf and djvu documents (you need to make sure executable =potrace=
+or =djvm= and =c44= in search PATH). Those are distributed by most of Linux
+package sources.
 
 If you're not willing to install them, you can still use it as is. The program
 will process your input image files and produce a set of output =ppm= images

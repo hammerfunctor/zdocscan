@@ -13,6 +13,7 @@
 //    You should have received a copy of the GNU General Public License
 //    along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+const builtin = @import("builtin");
 const std = @import("std");
 const clap = @import("clap");
 const stb = @import("zstbi");
@@ -21,7 +22,6 @@ const build_options = @import("build_options");
 const adapt = @import("root.zig");
 
 const preHelpString =
-    \\
     \\    This program is distributed in the hope that it will be useful,
     \\    but WITHOUT ANY WARRANTY; without even the implied warranty of
     \\    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -40,7 +40,25 @@ const paramString =
     \\
 ;
 
-const Backend = enum { pdf, djvu, png, jpg, ppm };
+const Backend = enum { pdf, djvu, png, jpg, ppm, none };
+
+fn exeLookup(a: std.mem.Allocator, exe: []const u8) !bool {
+    const path_env = try std.process.getEnvVarOwned(a, "PATH");
+    const separator: u8 = if (builtin.target.os.tag == .windows) ';' else ':';
+
+    var it = std.mem.splitScalar(u8, path_env, separator);
+
+    while (it.next()) |dir| {
+        const full_path = try std.fs.path.join(a, &[_][]const u8{ dir, exe });
+        defer a.free(full_path);
+
+        if (std.fs.cwd().access(full_path, .{})) |_| {
+            return true;
+        } else |_| {}
+    }
+
+    return false;
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -76,6 +94,16 @@ pub fn main() !void {
         std.debug.print(paramString, .{});
     }
 
+    const default_b, const default_ext = blk: {
+        const potrace = try exeLookup(allocator, "potrace");
+        if (potrace) break :blk .{ Backend.pdf, "pdf" };
+        const djvm = try exeLookup(allocator, "djvm");
+        const c44 = try exeLookup(allocator, "c44");
+        const cjb2 = try exeLookup(allocator, "cjb2");
+        if (djvm and c44 and cjb2) break :blk .{ Backend.djvu, "djvu" };
+        break :blk .{ Backend.none, "" };
+    };
+
     const dir = if (res.args.dir) |d| d else "/tmp"; // FIXME: maybe take care of dir specified in --output?
 
     var buf = [_]u8{0} ** 1024;
@@ -83,12 +111,14 @@ pub fn main() !void {
         const o = if (res.args.output) |o| std.fs.path.basename(o) else "";
         const ext0 = std.fs.path.extension(o);
         const ext1 = std.ascii.lowerString(&buf, ext0);
+        const c0 = if (res.args.channel) |c| c else 0;
         const b, const ext = blk1: {
             if (std.mem.eql(u8, ext1, ".djvu")) break :blk1 .{ Backend.djvu, "djvu" };
             if (std.mem.eql(u8, ext1, ".png")) break :blk1 .{ Backend.png, "png" };
             if (std.mem.eql(u8, ext1, ".jpg")) break :blk1 .{ Backend.jpg, "jpg" };
             if (std.mem.eql(u8, ext1, ".ppm")) break :blk1 .{ Backend.ppm, "ppm" };
-            break :blk1 .{ Backend.pdf, "pdf" };
+            if (c0 == 3) break :blk1 .{ Backend.djvu, "djvu" };
+            break :blk1 .{ default_b, default_ext }; // FIXME: determine output format based on existance of binaries
         };
         const outname = if (o.len > ext0.len) o[0 .. o.len - ext0.len] else "output";
         // const output = try std.fmt.allocPrint(allocator, "{s}.{s}", .{outname, ext});
@@ -113,7 +143,7 @@ pub fn main() !void {
             const ext1, const imgop: adapt.ImageOutputOptions = switch (b) {
                 .jpg => .{ "jpg", .jpg },
                 .png => .{ "png", .png },
-                else => .{ "ppm", .ppm },
+                else => if (c == 1) .{ "pbm", .pbm } else .{ "ppm", .ppm },
             };
             const imgname = try std.fmt.allocPrint(allocator, "{s}-{d}.{s}", .{ outname, fileind, ext1 });
             defer allocator.free(imgname);
@@ -141,21 +171,24 @@ pub fn main() !void {
         try djvm.appendSlice(&.{ "djvm", "-c", outpath });
         defer for (djvm.items[3..]) |f| allocator.free(f);
 
+        const bin1 = if (c == 1) "cjb2" else "c44";
         for (filenames.items, 0..) |i, ind| {
             const pagepath = try std.fmt.allocPrint(allocator, "{s}.djvu", .{i});
             try djvm.append(pagepath);
-            var cmd = std.process.Child.init(&.{ "c44", i, pagepath }, allocator);
-            if (ind == filenames.items.len - 1) { // only wait for the last run
-                _ = cmd.spawnAndWait() catch |e| {
-                    std.debug.print("Failed spawning process c44: {any}\n", .{e});
-                    unreachable;
-                };
-            } else {
-                cmd.spawn() catch |e| {
-                    std.debug.print("Failed spawning process c44: {any}\n", .{e});
-                    unreachable;
-                };
-            }
+            var cmd = std.process.Child.init(&.{ bin1, i, pagepath }, allocator);
+            // Time for each process is ignorable, no need to parallelize and complicate things
+            // if (ind == filenames.items.len - 1) { // only wait for the last run
+            _ = ind;
+            _ = cmd.spawnAndWait() catch |e| {
+                std.debug.print("Failed spawning process c44: {any}\n", .{e});
+                unreachable;
+            };
+            // } else {
+            //    cmd.spawn() catch |e| {
+            //         std.debug.print("Failed spawning process c44: {any}\n", .{e});
+            //         unreachable;
+            //     };
+            // }
         }
         var cmd = std.process.Child.init(djvm.items, allocator);
         cmd.spawn() catch |e| {
@@ -179,7 +212,7 @@ pub fn main() !void {
             defer alist.deinit();
             const outpath = try std.fs.path.join(allocator, &.{ dir, output });
             defer allocator.free(outpath);
-            try alist.appendSlice(&.{ "potrace", "-b", "pdf", "-o", outpath, "--" });
+            try alist.appendSlice(&.{ "potrace", "-b", "pdf", "-t", "10", "-o", outpath, "--" });
             try alist.appendSlice(filenames.items);
             var cmd = std.process.Child.init(alist.items, allocator);
             cmd.spawn() catch |e| {

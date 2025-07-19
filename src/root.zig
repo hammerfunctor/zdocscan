@@ -24,6 +24,7 @@ pub const ImageOutputOptions = enum {
     png,
     jpg,
     ppm,
+    pbm,
 };
 
 pub const Settings = struct {
@@ -71,6 +72,38 @@ pub fn writeToFile(img: Image, filename: []const u8, o: ImageOutputOptions) !voi
             }
             try bw.flush();
         },
+        .pbm => {
+            const mask = img.data;
+            var file = try std.fs.cwd().createFile(filename, .{});
+            defer file.close();
+            var bw = std.io.bufferedWriter(file.writer());
+            var fw = bw.writer();
+            try fw.print("P4\n# comment\n#\n{d} {d}\n", .{ img.width, img.height });
+
+            const bn = img.width / 8; // number of complete bytes per row
+            const rest = img.width % 8;
+
+            // std.debug.print("width={d}, height={d}, bn={d}, rest={d}", .{ img.width, img.height, bn, rest });
+
+            for (0..img.height) |i| {
+                const offset = i * img.width;
+                for (0..bn) |j| {
+                    var b: u8 = 0;
+                    for (0..8) |k| {
+                        const bit: u8 = 1 & mask[offset + 8 * j + k];
+                        b += bit << (7 - @as(u3, @intCast(k)));
+                    }
+                    try fw.writeByte(~b);
+                }
+                const offset1 = offset + 8 * bn;
+                var b: u8 = 0;
+                // The last byte of the row doesn't care about padding bits on the right
+                for (0..rest) |j|
+                    b += (1 & mask[offset1 + j]) << (7 - @as(u3, @intCast(j)));
+                try fw.writeByte(~b);
+            }
+            try bw.flush();
+        },
     }
 }
 
@@ -89,7 +122,6 @@ pub fn processFile(a: Allocator, in: Image, s: Settings) !Image {
 
     const c = s.channel;
     const c0 = s.channel0;
-    // defer mask.deinit();
     var out = try stb.Image.createEmpty(in.width, in.height, c, .{});
 
     if (c == 1) {
