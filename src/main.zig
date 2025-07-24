@@ -44,6 +44,7 @@ const Backend = enum { pdf, djvu, png, jpg, ppm, none };
 
 fn exeLookup(a: std.mem.Allocator, exe: []const u8) !bool {
     const path_env = try std.process.getEnvVarOwned(a, "PATH");
+    defer a.free(path_env);
     const separator: u8 = if (builtin.target.os.tag == .windows) ';' else ':';
 
     var it = std.mem.splitScalar(u8, path_env, separator);

@@ -25,6 +25,7 @@ pub const ImageOutputOptions = enum {
     jpg,
     ppm,
     pbm,
+    pbm1,
 };
 
 pub const Settings = struct {
@@ -73,34 +74,52 @@ pub fn writeToFile(img: Image, filename: []const u8, o: ImageOutputOptions) !voi
             try bw.flush();
         },
         .pbm => {
+            // P4
             const mask = img.data;
             var file = try std.fs.cwd().createFile(filename, .{});
             defer file.close();
             var bw = std.io.bufferedWriter(file.writer());
             var fw = bw.writer();
-            try fw.print("P4\n# comment\n#\n{d} {d}\n", .{ img.width, img.height });
+            try fw.print("P4\n# comment\n#\n#\n{d} {d}\n", .{ img.width, img.height });
 
             const bn = img.width / 8; // number of complete bytes per row
             const rest = img.width % 8;
 
             // std.debug.print("width={d}, height={d}, bn={d}, rest={d}", .{ img.width, img.height, bn, rest });
-
+            const bitmask = [8]u8{ 1 << 7, 1 << 6, 1 << 5, 1 << 4, 1 << 3, 1 << 2, 1 << 1, 1 << 0 };
+            const extrabyte = rest != 0;
             for (0..img.height) |i| {
                 const offset = i * img.width;
                 for (0..bn) |j| {
+                    const offset1 = offset + 8 * j;
                     var b: u8 = 0;
-                    for (0..8) |k| {
-                        const bit: u8 = 1 & mask[offset + 8 * j + k];
-                        b += bit << (7 - @as(u3, @intCast(k)));
-                    }
+                    for (0..8) |k|
+                        b |= mask[offset1 + k] & bitmask[k];
                     try fw.writeByte(~b);
                 }
                 const offset1 = offset + 8 * bn;
                 var b: u8 = 0;
-                // The last byte of the row doesn't care about padding bits on the right
-                for (0..rest) |j|
-                    b += (1 & mask[offset1 + j]) << (7 - @as(u3, @intCast(j)));
-                try fw.writeByte(~b);
+                if (extrabyte) {
+                    // The last byte of the row doesn't care about padding bits on the right
+                    for (0..rest) |k|
+                        b |= mask[offset1 + k] & bitmask[k];
+                    try fw.writeByte(~b);
+                }
+            }
+            try bw.flush();
+        },
+        .pbm1 => {
+            // P1
+            const mask = img.data;
+            var file = try std.fs.cwd().createFile(filename, .{});
+            defer file.close();
+            var bw = std.io.bufferedWriter(file.writer());
+            var fw = bw.writer();
+            try fw.print("P1\n# comment\n#\n{d} {d}\n", .{ img.width, img.height });
+
+            for (0..mask.len) |i| {
+                try fw.writeByte(49 - (1 & mask[i]));
+                try fw.writeByte(' ');
             }
             try bw.flush();
         },
