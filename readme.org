@@ -11,25 +11,23 @@ Image. Journal of Graphic Tools, 12(2), pp. 13-21.*
 around my multiple rounds of attendence to such a program. It also beats most of
 your phone apps for document scanning.
 
-This program is developed and tested on zig =0.14.1=. Install from your package
+This program is developed and tested using zig =0.14.1=. Install from your package
 distributor, or grab a tarball from [[https://ziglang.org/download/]] or use =zigup=
-to setup toolchain. ArchLinux users can install this program from
+to setup toolchain. For ArchLinux users, just install this program from
 =aur/zdocscan-git=.
 
-This program processes images by itself. But in order to generate pdf or djvu
-documents, one need external tools. Since version =0.0.2= I packaged =potrace=
-along with the compilation procedure, which is very primitive and only tested on
+This program processes and produces images by itself. But in order to generate
+pdf or djvu documents, one needs external tools, =potrace= for PDF and
+=djvulibre= for DJVU. Since version =0.0.2= I packaged =potrace= along with the
+compilation procedure, but it's still very primitive and only tested on
 Linux. Please feel free to submit an issue if you met any problem on other
 platforms. You can install independent =potrace= or =djvulibre= for the
-production of pdf and djvu documents (you need to make sure executable =potrace=
-or =djvm= and =c44= in search PATH). Those are distributed by most of Linux
-package sources.
+production of pdf and djvu documents. You just need to make sure executable
+=potrace= or =djvm= and =c44= in your system search PATH, which are distributed
+by most of Linux package sources.
 
-If you're not willing to install them, you can still use it as is. The program
-will process your input image files and produce a set of output =ppm= images
-(change the =.ppm= in ~try adapt.writeToFile(out, imgpath, .ppm);~ to =.jpg= or
-=.png= in order to have outputs in different format), and stop when it fails to
-find the binaries prescribed above.
+If you're not willing to install them, you can still use it as is to process
+images in a definitive way.
 
 To compile and use to it, simply do
 #+begin_src sh
@@ -39,6 +37,7 @@ zig build -Dbundle-potrace=true
 
 # use
 zdocscan <file1> <file2> ... # /tmp/output.pdf and images /tmp/{output-0.ppm,...}
+zdocscan in.png -c 3 -o /tmp/out.jpg # /tmp/out-0.jpg
 zdocscan -d /tmp -o notes.pdf <file1> <file2> ... # /tmp/notes.pdf and images /tmp/{notes-0.ppm,...}
 zdocscan -d /tmp -c 3 -o notes.djvu <file1> <file2> ... # colored /tmp/notes.djvu and ppm's
 #+end_src
